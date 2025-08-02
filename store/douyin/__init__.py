@@ -233,3 +233,91 @@ async def save_creator(user_id: str, creator: Dict):
     }
     utils.logger.info(f"[store.douyin.save_creator] creator:{local_db_item}")
     await DouyinStoreFactory.create_store().store_creator(local_db_item)
+
+
+async def update_douyin_aweme_image(aweme_id: str, pic_content: bytes, extension_file_name: str):
+    """
+    保存抖音图片
+    
+    Args:
+        aweme_id: 抖音视频ID
+        pic_content: 图片内容
+        extension_file_name: 文件扩展名
+    """
+    from .douyin_store_impl import DouyinStoreImage
+    
+    local_db_item = {
+        "aweme_id": aweme_id,
+        "pic_content": pic_content,
+        "extension_file_name": extension_file_name,
+        "add_ts": utils.get_current_timestamp(),
+    }
+    utils.logger.info(f"[store.douyin.update_douyin_aweme_image] aweme_id:{aweme_id}, file_name:{extension_file_name}")
+    await DouyinStoreImage().store_image(local_db_item)
+
+
+async def update_douyin_aweme_video(aweme_item: Dict, video_content: bytes, extension_file_name: str):
+    """
+    保存抖音视频
+    
+    Args:
+        aweme_item: 抖音视频完整信息
+        video_content: 视频内容
+        extension_file_name: 文件扩展名
+    """
+    from .douyin_store_impl import DouyinStoreVideo
+    
+    local_db_item = {
+        "aweme_item": aweme_item,
+        "video_content": video_content,
+        "extension_file_name": extension_file_name,
+        "add_ts": utils.get_current_timestamp(),
+    }
+    aweme_id = aweme_item.get("aweme_id")
+    utils.logger.info(f"[store.douyin.update_douyin_aweme_video] aweme_id:{aweme_id}, file_name:{extension_file_name}")
+    await DouyinStoreVideo().store_video(local_db_item)
+
+
+async def update_douyin_aweme_image_for_love(aweme_id: str, pic_content: bytes, extension_file_name: str, aweme_item: Dict = None):
+    """
+    保存抖音图片到love目录
+    
+    Args:
+        aweme_id: 抖音视频ID
+        pic_content: 图片内容
+        extension_file_name: 文件扩展名
+        aweme_item: 抖音作品完整信息（可选）
+    """
+    from .douyin_store_impl import DouyinStoreImageForLove
+    
+    local_db_item = {
+        "aweme_id": aweme_id,
+        "pic_content": pic_content,
+        "extension_file_name": extension_file_name,
+        "aweme_item": aweme_item,
+        "add_ts": utils.get_current_timestamp(),
+    }
+    utils.logger.info(f"[store.douyin.update_douyin_aweme_image_for_love] aweme_id:{aweme_id}, file_name:{extension_file_name}")
+    await DouyinStoreImageForLove().store_image(local_db_item)
+
+
+async def update_douyin_aweme_video_for_love(aweme_item: Dict, video_content: bytes, extension_file_name: str):
+    """
+    保存抖音视频到love目录
+    
+    Args:
+        aweme_item: 抖音视频完整信息
+        video_content: 视频内容
+        extension_file_name: 文件扩展名
+    """
+    from .douyin_store_impl import DouyinStoreVideoForLove
+    
+    local_db_item = {
+        "aweme_item": aweme_item,
+        "video_content": video_content,
+        "extension_file_name": extension_file_name,
+        "add_ts": utils.get_current_timestamp(),
+    }
+    aweme_id = aweme_item.get("aweme_id")
+    utils.logger.info(f"[store.douyin.update_douyin_aweme_video_for_love] aweme_id:{aweme_id}, file_name:{extension_file_name}")
+    await DouyinStoreVideoForLove().store_video(local_db_item)

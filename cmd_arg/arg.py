@@ -25,16 +25,16 @@ async def parse_cmd():
                         help='Login type / 登录方式 (qrcode=二维码 | phone=手机号 | cookie=Cookie)',
                         choices=["qrcode", "phone", "cookie"], default=config.LOGIN_TYPE)
     parser.add_argument('--type', type=str, 
-                        help='Crawler type / 爬取类型 (search=搜索 | detail=详情 | creator=创作者)',
-                        choices=["search", "detail", "creator"], default=config.CRAWLER_TYPE)
+                        help='Crawler type / 爬取类型 (search=搜索 | detail=详情 | creator=创作者 | love=点赞作品)',
+                        choices=["search", "detail", "creator", "love"], default=config.CRAWLER_TYPE)
     parser.add_argument('--start', type=int,
                         help='Number of start page / 起始页码', default=config.START_PAGE)
     parser.add_argument('--keywords', type=str,
                         help='Please input keywords / 请输入关键词', default=config.KEYWORDS)
     parser.add_argument('--get_comment', type=str2bool,
-                        help='''Whether to crawl level one comment / 是否爬取一级评论, supported values case insensitive / 支持的值(不区分大小写) ('yes', 'true', 't', 'y', '1', 'no', 'false', 'f', 'n', '0')''', default=config.ENABLE_GET_COMMENTS)
+                        help='''Whether to crawl level one comment / 是否爬取一级评论, supported values case insensitive / 支持的值(不区分大小写) ('yes', 'true', 't', 'y', '1', 'no', 'false', 'f', 'n', '0')''')
     parser.add_argument('--get_sub_comment', type=str2bool,
-                        help=''''Whether to crawl level two comment / 是否爬取二级评论, supported values case insensitive / 支持的值(不区分大小写) ('yes', 'true', 't', 'y', '1', 'no', 'false', 'f', 'n', '0')''', default=config.ENABLE_GET_SUB_COMMENTS)
+                        help=''''Whether to crawl level two comment / 是否爬取二级评论, supported values case insensitive / 支持的值(不区分大小写) ('yes', 'true', 't', 'y', '1', 'no', 'false', 'f', 'n', '0')''')
     parser.add_argument('--save_data_option', type=str,
                         help='Where to save the data / 数据保存方式 (csv=CSV文件 | db=MySQL数据库 | json=JSON文件 | sqlite=SQLite数据库)', 
                         choices=['csv', 'db', 'json', 'sqlite'], default=config.SAVE_DATA_OPTION)
@@ -49,7 +49,10 @@ async def parse_cmd():
     config.CRAWLER_TYPE = args.type
     config.START_PAGE = args.start
     config.KEYWORDS = args.keywords
-    config.ENABLE_GET_COMMENTS = args.get_comment
-    config.ENABLE_GET_SUB_COMMENTS = args.get_sub_comment
+    # 只在明确指定参数时才覆盖配置
+    if args.get_comment is not None:
+        config.ENABLE_GET_COMMENTS = args.get_comment
+    if args.get_sub_comment is not None:
+        config.ENABLE_GET_SUB_COMMENTS = args.get_sub_comment
     config.SAVE_DATA_OPTION = args.save_data_option
     config.COOKIES = args.cookies

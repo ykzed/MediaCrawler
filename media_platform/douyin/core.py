@@ -106,6 +106,9 @@ class DouYinCrawler(AbstractCrawler):
             elif config.CRAWLER_TYPE == "creator":
                 # Get the information and comments of the specified creator
                 await self.get_creators_and_videos()
+            elif config.CRAWLER_TYPE == "love":
+                # Get the user's favorite/liked videos
+                await self.get_user_favorite_videos()
 
             utils.logger.info("[DouYinCrawler.start] Douyin Crawler finished ...")
 
@@ -166,6 +169,8 @@ class DouYinCrawler(AbstractCrawler):
                         continue
                     aweme_list.append(aweme_info.get("aweme_id", ""))
                     await douyin_store.update_douyin_aweme(aweme_item=aweme_info)
+                    # 下载媒体文件（视频/图片）
+                    await self.get_notice_media(aweme_info)
             utils.logger.info(
                 f"[DouYinCrawler.search] keyword:{keyword}, aweme_list:{aweme_list}"
             )
@@ -182,6 +187,8 @@ class DouYinCrawler(AbstractCrawler):
         for aweme_detail in aweme_details:
             if aweme_detail is not None:
                 await douyin_store.update_douyin_aweme(aweme_detail)
+                # 下载媒体文件（视频/图片）
+                await self.get_notice_media(aweme_detail)
         await self.batch_get_note_comments(config.DY_SPECIFIED_ID_LIST)
 
     async def get_aweme_detail(
@@ -261,6 +268,46 @@ class DouYinCrawler(AbstractCrawler):
             video_ids = [video_item.get("aweme_id") for video_item in all_video_list]
             await self.batch_get_note_comments(video_ids)
 
+    async def get_user_favorite_videos(self) -> None:
+        """
+        Get current user's favorite/liked videos
+        """
+        utils.logger.info("[DouYinCrawler.get_user_favorite_videos] Begin get user favorite videos")
+        
+        # 获取当前登录用户的sec_user_id
+        # 这里需要从配置或者其他方式获取用户ID
+        if not hasattr(config, 'DY_USER_ID') or not config.DY_USER_ID:
+            utils.logger.error("[DouYinCrawler.get_user_favorite_videos] DY_USER_ID not configured")
+            return
+            
+        user_id = config.DY_USER_ID
+        utils.logger.info(f"[DouYinCrawler.get_user_favorite_videos] Getting favorite videos for user: {user_id}")
+        
+        # Get all favorite videos of the user
+        all_favorite_videos = await self.dy_client.get_all_user_favorite_awemes(
+            sec_user_id=user_id,
+            callback=self.fetch_favorite_video_detail
+        )
+        utils.logger.info(
+            f"[DouYinCrawler.get_user_favorite_videos] Got {len(all_favorite_videos)} favorite videos from user {user_id}"
+        )
+
+        # Get comments for each favorite video if enabled
+        if config.ENABLE_GET_COMMENTS:
+            video_ids = [video.get("aweme_id") for video in all_favorite_videos if video.get("aweme_id")]
+            await self.batch_get_note_comments(video_ids)
+
+    async def fetch_favorite_video_detail(self, video_list: List[Dict]):
+        """
+        Fetch favorite video details and save them
+        """
+        utils.logger.info(f"[DouYinCrawler.fetch_favorite_video_detail] Processing {len(video_list)} favorite videos")
+        
+        for video_item in video_list:
+            await douyin_store.update_douyin_aweme(aweme_item=video_item)
+            # 下载媒体文件到love目录
+            await self.get_notice_media_for_love(video_item)
+
     async def fetch_creator_video_detail(self, video_list: List[Dict]):
         """
         Concurrently obtain the specified post list and save the data
@@ -275,6 +322,8 @@ class DouYinCrawler(AbstractCrawler):
         for aweme_item in note_details:
             if aweme_item is not None:
                 await douyin_store.update_douyin_aweme(aweme_item)
+                # 下载媒体文件（视频/图片）
+                await self.get_notice_media(aweme_item)
 
     async def create_douyin_client(self, httpx_proxy: Optional[str]) -> DOUYINClient:
         """Create douyin client"""
@@ -359,6 +408,184 @@ class DouYinCrawler(AbstractCrawler):
             return await self.launch_browser(
                 chromium, playwright_proxy, user_agent, headless
             )
+
+    async def get_notice_media(self, aweme_detail: Dict):
+        """
+        下载抖音视频和图片
+        
+        Args:
+            aweme_detail: 抖音视频详情
+        """
+        if not config.ENABLE_GET_IMAGES:
+            utils.logger.info(
+                f"[DouYinCrawler.get_notice_media] Crawling image mode is not enabled"
+            )
+            return
+        await self.get_note_images(aweme_detail)
+        await self.get_notice_video(aweme_detail)
+
+    async def get_notice_media_for_love(self, aweme_detail: Dict):
+        """
+        get aweme media for love/favorite videos and save to love directory
+        :param aweme_detail:
+        :return:
+        """
+        if not config.ENABLE_GET_IMAGES:
+            utils.logger.info(f"[DouYinCrawler.get_notice_media_for_love] ENABLE_GET_IMAGES is {config.ENABLE_GET_IMAGES}")
+            return
+
+        await self.get_note_images_for_love(aweme_detail)
+        await self.get_notice_video_for_love(aweme_detail)
+
+    async def get_note_images_for_love(self, aweme_item: Dict):
+        """
+        下载抖音图片到love目录
+        
+        Args:
+            aweme_item: 抖音视频详情
+        """
+        if not config.ENABLE_GET_IMAGES:
+            return
+        
+        aweme_id = aweme_item.get("aweme_id")
+        images: List[Dict] = aweme_item.get("images", [])
+        
+        if not images:
+            return
+            
+        pic_num = 0
+        for image in images:
+            image_url_list = image.get("url_list", [])
+            if not image_url_list:
+                continue
+                
+            url = image_url_list[-1]  # 获取最后一个URL（通常是最高质量的）
+            if not url:
+                continue
+                
+            content = await self.dy_client.get_note_media(url)
+            if content is None:
+                continue
+                
+            extension_file_name = f"{pic_num}.jpg"
+            pic_num += 1
+            await douyin_store.update_douyin_aweme_image_for_love(aweme_id, content, extension_file_name)
+
+    async def get_notice_video_for_love(self, aweme_item: Dict):
+        """
+        下载抖音视频到love目录
+        
+        Args:
+            aweme_item: 抖音视频详情
+        """
+        if not config.ENABLE_GET_IMAGES:
+            return
+            
+        aweme_id = aweme_item.get("aweme_id")
+        video_item = aweme_item.get("video", {})
+        
+        # 获取视频下载URL
+        url_h264_list = video_item.get("play_addr_h264", {}).get("url_list", [])
+        url_256_list = video_item.get("play_addr_256", {}).get("url_list", [])
+        url_list = video_item.get("play_addr", {}).get("url_list", [])
+        actual_url_list = url_h264_list or url_256_list or url_list
+        
+        if not actual_url_list:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video_for_love] aweme_id: {aweme_id}, no video URLs found")
+            return
+            
+        if len(actual_url_list) < 2:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video_for_love] aweme_id: {aweme_id}, URL list too short: {len(actual_url_list)}, skipping")
+            return
+            
+        video_url = actual_url_list[-1]
+        if not video_url:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video_for_love] aweme_id: {aweme_id}, video URL is empty")
+            return
+            
+        content = await self.dy_client.get_note_media(video_url)
+        if content is None:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video_for_love] aweme_id: {aweme_id}, failed to download video content")
+            return
+            
+        extension_file_name = "video.mp4"
+        await douyin_store.update_douyin_aweme_video_for_love(aweme_item, content, extension_file_name)
+        utils.logger.info(f"[DouYinCrawler.get_notice_video_for_love] aweme_id: {aweme_id}, video saved successfully")
+
+    async def get_note_images(self, aweme_item: Dict):
+        """
+        下载抖音图片
+        
+        Args:
+            aweme_item: 抖音视频详情
+        """
+        if not config.ENABLE_GET_IMAGES:
+            return
+        
+        aweme_id = aweme_item.get("aweme_id")
+        images: List[Dict] = aweme_item.get("images", [])
+        
+        if not images:
+            return
+            
+        pic_num = 0
+        for image in images:
+            image_url_list = image.get("url_list", [])
+            if not image_url_list:
+                continue
+                
+            url = image_url_list[-1]  # 获取最后一个URL（通常是最高质量的）
+            if not url:
+                continue
+                
+            content = await self.dy_client.get_note_media(url)
+            if content is None:
+                continue
+                
+            extension_file_name = f"{pic_num}.jpg"
+            pic_num += 1
+            await douyin_store.update_douyin_aweme_image(aweme_id, content, extension_file_name)
+
+    async def get_notice_video(self, aweme_item: Dict):
+        """
+        下载抖音视频
+        
+        Args:
+            aweme_item: 抖音视频详情
+        """
+        if not config.ENABLE_GET_IMAGES:
+            return
+            
+        aweme_id = aweme_item.get("aweme_id")
+        video_item = aweme_item.get("video", {})
+        
+        # 获取视频下载URL
+        url_h264_list = video_item.get("play_addr_h264", {}).get("url_list", [])
+        url_256_list = video_item.get("play_addr_256", {}).get("url_list", [])
+        url_list = video_item.get("play_addr", {}).get("url_list", [])
+        actual_url_list = url_h264_list or url_256_list or url_list
+        
+        if not actual_url_list:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video] aweme_id: {aweme_id}, no video URLs found")
+            return
+            
+        if len(actual_url_list) < 2:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video] aweme_id: {aweme_id}, URL list too short: {len(actual_url_list)}, skipping")
+            return
+            
+        video_url = actual_url_list[-1]
+        if not video_url:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video] aweme_id: {aweme_id}, video URL is empty")
+            return
+            
+        content = await self.dy_client.get_note_media(video_url)
+        if content is None:
+            utils.logger.warning(f"[DouYinCrawler.get_notice_video] aweme_id: {aweme_id}, failed to download video content")
+            return
+            
+        extension_file_name = "video.mp4"
+        await douyin_store.update_douyin_aweme_video(aweme_item, content, extension_file_name)
+        utils.logger.info(f"[DouYinCrawler.get_notice_video] aweme_id: {aweme_id}, video saved successfully")
 
     async def close(self) -> None:
         """Close browser context"""

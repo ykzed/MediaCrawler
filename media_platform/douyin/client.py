@@ -13,8 +13,9 @@ import asyncio
 import copy
 import json
 import urllib.parse
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Union
 
+import httpx
 import requests
 from playwright.async_api import BrowserContext
 
@@ -321,3 +322,76 @@ class DOUYINClient(AbstractApiClient):
                 await callback(aweme_list)
             result.extend(aweme_list)
         return result
+
+    async def get_user_favorite_awemes(self, sec_user_id: str, max_cursor: str = "0") -> Dict:
+        """
+        获取用户点赞/喜欢的作品列表
+        
+        Args:
+            sec_user_id: 用户的加密ID
+            max_cursor: 分页游标，第一次请求为"0"
+            
+        Returns:
+            Dict: 包含用户点赞作品列表的响应数据
+        """
+        uri = "/aweme/v1/web/aweme/favorite/"
+        params = {
+            "sec_user_id": sec_user_id,
+            "count": 18,
+            "max_cursor": max_cursor,
+            "min_cursor": "0",
+            "device_platform": "webapp",
+            "aid": "6383",
+            "publish_video_strategy_type": 2,
+            "verifyFp": "verify_ma3hrt8n_q2q2HyYA_uLyO_4N6D_BLvX_E2LgoGmkA1BU",
+            "fp": "verify_ma3hrt8n_q2q2HyYA_uLyO_4N6D_BLvX_E2LgoGmkA1BU",
+        }
+        return await self.get(uri, params)
+
+    async def get_all_user_favorite_awemes(self, sec_user_id: str, callback: Optional[Callable] = None):
+        """
+        获取用户所有点赞/喜欢的作品
+        
+        Args:
+            sec_user_id: 用户的加密ID
+            callback: 回调函数，用于处理每批获取的作品
+            
+        Returns:
+            List: 所有点赞作品列表
+        """
+        has_more = 1
+        max_cursor = "0"
+        result = []
+        while has_more == 1:
+            favorite_res = await self.get_user_favorite_awemes(sec_user_id, max_cursor)
+            has_more = favorite_res.get("has_more", 0)
+            max_cursor = favorite_res.get("max_cursor", "0")
+            aweme_list = favorite_res.get("aweme_list") if favorite_res.get("aweme_list") else []
+            utils.logger.info(
+                f"[DOUYINClient.get_all_user_favorite_awemes] got sec_user_id:{sec_user_id} favorite video len : {len(aweme_list)}"
+            )
+            if callback:
+                await callback(aweme_list)
+            result.extend(aweme_list)
+            await asyncio.sleep(1)  # 添加延时避免请求过快
+        return result
+
+    async def get_note_media(self, url: str) -> Union[bytes, None]:
+        """
+        下载抖音媒体文件（视频/图片）
+        
+        Args:
+            url: 媒体文件URL
+            
+        Returns:
+            bytes: 媒体文件内容
+        """
+        async with httpx.AsyncClient(proxies=self.proxies, follow_redirects=True) as client:
+            response = await client.request("GET", url, timeout=self.timeout)
+            if response.status_code != 200:
+                utils.logger.error(
+                    f"[DOUYINClient.get_note_media] request {url} failed with status {response.status_code}, reason: {response.reason_phrase}"
+                )
+                return None
+            else:
+                return response.content

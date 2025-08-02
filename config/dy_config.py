@@ -23,3 +23,8 @@ DY_CREATOR_ID_LIST = [
     "MS4wLjABAAAATJPY7LAlaa5X-c8uNdWkvz0jUGgpw4eeXIwu_8BhvqE",
     # ........................
 ]
+
+# 指定要获取点赞作品的用户ID（当前登录用户的sec_user_id）
+# 获取方法：登录抖音后，在浏览器开发者工具中查看网络请求，找到包含sec_user_id的请求
+DY_USER_ID = "MS4wLjABAAAAzzL9xP2umXig56ci9CnuRBy7QX_uuk2xFAXJ7JPdojc"
+# 示例：DY_USER_ID = "MS4wLjABAAAA..."

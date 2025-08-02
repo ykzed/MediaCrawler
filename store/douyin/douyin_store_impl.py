@@ -173,6 +173,276 @@ class DouyinDbStoreImplement(AbstractStore):
         else:
             await update_creator_by_user_id(user_id, creator)
 
+
+class DouyinStoreImage:
+    """
+    抖音图片存储实现类
+    """
+    
+    def __init__(self):
+        self.store_path = "data/douyin/images"
+        pathlib.Path(self.store_path).mkdir(parents=True, exist_ok=True)
+    
+    async def store_image(self, image_item: Dict):
+        """
+        保存抖音图片到本地
+        
+        Args:
+            image_item: 图片信息字典
+        """
+        aweme_id = image_item.get("aweme_id")
+        pic_content = image_item.get("pic_content")
+        extension_file_name = image_item.get("extension_file_name")
+        
+        # 创建以aweme_id命名的子目录
+        aweme_dir = os.path.join(self.store_path, aweme_id)
+        pathlib.Path(aweme_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 保存图片文件
+        file_path = os.path.join(aweme_dir, extension_file_name)
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(pic_content)
+        
+        utils.logger.info(f"[DouyinStoreImage.store_image] 图片已保存: {file_path}")
+
+
+class DouyinStoreVideo:
+    """
+    抖音视频存储实现类
+    """
+    
+    def __init__(self):
+        self.store_path = "data/douyin/videos"
+        pathlib.Path(self.store_path).mkdir(parents=True, exist_ok=True)
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        清理文件名，移除不合法字符
+        
+        Args:
+            filename: 原始文件名
+            
+        Returns:
+            str: 清理后的文件名
+        """
+        # 替换不合法的文件名字符为下划线
+        illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        for char in illegal_chars:
+            filename = filename.replace(char, '_')
+        
+        # 替换换行符和制表符为空格
+        filename = filename.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # 移除其他控制字符
+        filename = ''.join(char for char in filename if ord(char) >= 32)
+        
+        # 移除连续的空格和下划线
+        import re
+        filename = re.sub(r'\s+', ' ', filename)
+        filename = re.sub(r'_+', '_', filename)
+        
+        # 限制文件名长度
+        if len(filename) > 80:
+            filename = filename[:80]
+        
+        return filename.strip(' _')
+    
+    async def store_video(self, video_item: Dict):
+        """
+        保存抖音视频到本地
+        
+        Args:
+            video_item: 视频信息字典
+        """
+        aweme_item = video_item.get("aweme_item")
+        video_content = video_item.get("video_content")
+        extension_file_name = video_item.get("extension_file_name")
+        
+        aweme_id = aweme_item.get("aweme_id")
+        title = aweme_item.get("title", aweme_item.get("desc", aweme_id))
+        
+        # 清理标题作为文件夹名
+        folder_name = self._sanitize_filename(title)
+        if not folder_name:
+            folder_name = aweme_id
+        
+        # 创建以作品标题命名的子目录
+        aweme_dir = os.path.join(self.store_path, folder_name)
+        pathlib.Path(aweme_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 保存视频文件
+        file_path = os.path.join(aweme_dir, extension_file_name)
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(video_content)
+        
+        # 保存作品json数据
+        json_file_path = os.path.join(aweme_dir, f"{aweme_id}.json")
+        async with aiofiles.open(json_file_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(aweme_item, ensure_ascii=False, indent=2))
+        
+        utils.logger.info(f"[DouyinStoreVideo.store_video] 视频已保存: {file_path}")
+        utils.logger.info(f"[DouyinStoreVideo.store_video] JSON已保存: {json_file_path}")
+
+
+class DouyinStoreImageForLove:
+    """
+    抖音点赞图片存储实现类
+    """
+    
+    def __init__(self):
+        self.store_path = "data/douyin/love"
+        pathlib.Path(self.store_path).mkdir(parents=True, exist_ok=True)
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        清理文件名，移除不合法字符
+        
+        Args:
+            filename: 原始文件名
+            
+        Returns:
+            清理后的文件名
+        """
+        # 替换不合法的文件名字符为下划线
+        illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*']
+        for char in illegal_chars:
+            filename = filename.replace(char, '_')
+        
+        # 替换换行符和制表符为空格
+        filename = filename.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # 移除其他控制字符
+        filename = ''.join(char for char in filename if ord(char) >= 32)
+        
+        # 移除连续的空格和下划线
+        import re
+        filename = re.sub(r'\s+', ' ', filename)
+        filename = re.sub(r'_+', '_', filename)
+        
+        # 限制文件名长度
+        if len(filename) > 80:
+            filename = filename[:80]
+        
+        return filename.strip(' _')
+    
+    async def store_image(self, image_item: Dict):
+        """
+        保存抖音点赞图片到本地love目录
+        
+        Args:
+            image_item: 图片信息字典
+        """
+        aweme_id = image_item.get("aweme_id")
+        pic_content = image_item.get("pic_content")
+        extension_file_name = image_item.get("extension_file_name")
+        aweme_item = image_item.get("aweme_item")
+        
+        # 获取作品标题作为文件夹名
+        title = aweme_item.get("title", aweme_item.get("desc", aweme_id)) if aweme_item else aweme_id
+        
+        # 清理标题作为文件夹名
+        folder_name = self._sanitize_filename(title)
+        if not folder_name:
+            folder_name = aweme_id
+        
+        # 创建以作品标题命名的子目录
+        aweme_dir = os.path.join(self.store_path, folder_name)
+        pathlib.Path(aweme_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 保存图片文件
+        file_path = os.path.join(aweme_dir, extension_file_name)
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(pic_content)
+        
+        # 保存作品json数据（如果有aweme_item信息）
+        if aweme_item:
+            json_file_path = os.path.join(aweme_dir, f"{aweme_id}.json")
+            # 检查JSON文件是否已存在，避免重复保存
+            if not os.path.exists(json_file_path):
+                async with aiofiles.open(json_file_path, 'w', encoding='utf-8') as f:
+                    await f.write(json.dumps(aweme_item, ensure_ascii=False, indent=2))
+                utils.logger.info(f"[DouyinStoreImageForLove.store_image] 点赞JSON已保存: {json_file_path}")
+        
+        utils.logger.info(f"[DouyinStoreImageForLove.store_image] 点赞图片已保存: {file_path}")
+
+
+class DouyinStoreVideoForLove:
+    """
+    抖音点赞视频存储实现类
+    """
+    
+    def __init__(self):
+        self.store_path = "data/douyin/love"
+        pathlib.Path(self.store_path).mkdir(parents=True, exist_ok=True)
+    
+    def _sanitize_filename(self, filename: str) -> str:
+        """
+        清理文件名，移除不合法字符
+        
+        Args:
+            filename: 原始文件名
+            
+        Returns:
+            str: 清理后的文件名
+        """
+        # 移除或替换不合法的文件名字符
+        invalid_chars = '<>:"/\\|?*'
+        for char in invalid_chars:
+            filename = filename.replace(char, '_')
+        
+        # 处理换行符和制表符
+        filename = filename.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        
+        # 移除其他控制字符
+        import re
+        filename = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', filename)
+        
+        # 合并连续的空格和下划线
+        filename = re.sub(r'\s+', ' ', filename)
+        filename = re.sub(r'_+', '_', filename)
+        
+        # 限制文件名长度
+        if len(filename) > 80:
+            filename = filename[:80]
+        
+        return filename.strip(' _')
+    
+    async def store_video(self, video_item: Dict):
+        """
+        保存抖音点赞视频到本地love目录
+        
+        Args:
+            video_item: 视频信息字典
+        """
+        aweme_item = video_item.get("aweme_item")
+        video_content = video_item.get("video_content")
+        extension_file_name = video_item.get("extension_file_name")
+        
+        aweme_id = aweme_item.get("aweme_id")
+        title = aweme_item.get("title", aweme_item.get("desc", aweme_id))
+        
+        # 清理标题作为文件夹名
+        folder_name = self._sanitize_filename(title)
+        if not folder_name:
+            folder_name = aweme_id
+        
+        # 创建以作品标题命名的子目录
+        aweme_dir = os.path.join(self.store_path, folder_name)
+        pathlib.Path(aweme_dir).mkdir(parents=True, exist_ok=True)
+        
+        # 保存视频文件
+        file_path = os.path.join(aweme_dir, extension_file_name)
+        async with aiofiles.open(file_path, 'wb') as f:
+            await f.write(video_content)
+        
+        # 保存作品json数据
+        json_file_path = os.path.join(aweme_dir, f"{aweme_id}.json")
+        async with aiofiles.open(json_file_path, 'w', encoding='utf-8') as f:
+            await f.write(json.dumps(aweme_item, ensure_ascii=False, indent=2))
+        
+        utils.logger.info(f"[DouyinStoreVideoForLove.store_video] 点赞视频已保存: {file_path}")
+        utils.logger.info(f"[DouyinStoreVideoForLove.store_video] 点赞JSON已保存: {json_file_path}")
+
 class DouyinJsonStoreImplement(AbstractStore):
     json_store_path: str = "data/douyin/json"
     words_store_path: str = "data/douyin/words"
